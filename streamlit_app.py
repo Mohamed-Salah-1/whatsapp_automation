@@ -48,11 +48,19 @@ def generate_script(recipients: list[tuple[str, str]], body: str) -> str:
     recipients_literal = repr(recipients)
     body_literal = repr(body)
     return textwrap.dedent(f'''\
-    import pywhatkit
     import time
+    import urllib.parse
+    import os
+
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
 
     recipients = {recipients_literal}
-
     message_body = {body_literal}
 
     def build_text(name: str, body: str) -> str:
@@ -60,13 +68,34 @@ def generate_script(recipients: list[tuple[str, str]], body: str) -> str:
         greeting = f"السلام عليكم {{name}}" if name else "السلام عليكم"
         return f"{{greeting}}\\n{{body}}"
 
+    USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".whatsapp_session")
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+    options = webdriver.ChromeOptions()
+    options.add_argument(f"--user-data-dir={{USER_DATA_DIR}}")
+    options.add_argument("--disable-notifications")
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    driver.set_window_size(900, 700)
+
     for phone, name in recipients:
         text = build_text(name, message_body)
+        encoded = urllib.parse.quote(text)
+        url = f"https://web.whatsapp.com/send?phone={{phone[1:]}}&text={{encoded}}"
         print(f"Sending to {{phone}} ({{name}})...")
-        pywhatkit.sendwhatmsg_instantly(phone, text, tab_close=True, wait_time=15)
+        driver.get(url)
+        wait = WebDriverWait(driver, 45)
+        send_xpath = "//button[@aria-label='Send' or @aria-label='إرسال']"
+        try:
+            send_btn = wait.until(EC.element_to_be_clickable((By.XPATH, send_xpath)))
+            send_btn.click()
+        except Exception:
+            msg_box = wait.until(EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true']")))
+            msg_box.send_keys(Keys.ENTER)
         print(f"Sent to {{phone}} ({{name}})")
-        time.sleep(3)
+        time.sleep(2)
 
+    driver.quit()
     print("Done! All messages sent.")
     ''')
 
@@ -95,8 +124,8 @@ st.sidebar.markdown(
     "1. Configure recipients + message below\n"
     "2. Click **Download script**\n"
     "3. Save the `.py` file on your computer\n"
-    "4. Run: `pip install pywhatkit && python send_whatsapp.py`\n"
-    "5. Make sure WhatsApp Web is logged in on Chrome"
+    "4. Run: `pip install selenium webdriver-manager && python send_whatsapp.py`\n"
+    "5. Scan QR code on first run — session is saved for next time"
 )
 
 st.sidebar.markdown("---")
@@ -105,7 +134,7 @@ st.sidebar.markdown(
     "There's also a standalone `.exe` version in this repo:\n"
     "**`whatsapp_sender_gui.py`** — a desktop app with a simple GUI.\n\n"
     "To build it:\n"
-    "1. `pip install pyinstaller pywhatkit`\n"
+    "1. `pip install pyinstaller selenium webdriver-manager`\n"
     "2. Run `build_exe.bat`\n"
     "3. Share `dist/WhatsApp_Sender.exe` with your friend"
 )

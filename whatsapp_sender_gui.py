@@ -6,6 +6,15 @@ import io
 import time
 import os
 import sys
+import urllib.parse
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 # ---------- core logic ----------
@@ -33,9 +42,43 @@ def build_text(name: str, body: str) -> str:
     return f"{greeting}\n{body}"
 
 
-def auto_send(phone: str, text: str):
-    import pywhatkit
-    pywhatkit.sendwhatmsg_instantly(phone, text, tab_close=True, wait_time=15)
+USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".whatsapp_session")
+os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+
+def create_driver():
+    options = webdriver.ChromeOptions()
+    options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    driver.set_window_size(900, 700)
+    return driver
+
+
+def send_whatsapp(driver, phone: str, text: str, log_callback, timeout=45):
+    encoded = urllib.parse.quote(text)
+    url = f"https://web.whatsapp.com/send?phone={phone[1:]}&text={encoded}"
+    log_callback(f"  Loading WhatsApp Web for {phone}...")
+    driver.get(url)
+
+    wait = WebDriverWait(driver, timeout)
+
+    # wait for either the send button or the message input to appear
+    send_xpath = "//button[@aria-label='Send' or @aria-label='إرسال']"
+    try:
+        send_btn = wait.until(EC.element_to_be_clickable((By.XPATH, send_xpath)))
+        send_btn.click()
+        log_callback(f"  Clicked send button.")
+    except Exception:
+        msg_xpath = "//div[@contenteditable='true']"
+        msg_box = wait.until(EC.presence_of_element_located((By.XPATH, msg_xpath)))
+        msg_box.send_keys(Keys.ENTER)
+        log_callback(f"  Pressed Enter to send.")
+
+    time.sleep(2)
 
 
 # ---------- GUI ----------
@@ -43,9 +86,13 @@ def auto_send(phone: str, text: str):
 class WhatsAppSenderApp:
     def __init__(self, root: tk.Tk):
         self.root = root
+        self.driver = None
         root.title("WhatsApp Bulk Sender")
-        root.geometry("750x750")
-        root.minsize(600, 600)
+        root.geometry("750+{}+{}".format(
+            (root.winfo_screenwidth() - 750) // 2,
+            (root.winfo_screenheight() - 750) // 2
+        ))
+        root.minsize(600, 650)
 
         # ---- recipients ----
         tk.Label(root, text="Recipients (phone,name — one per line, no header)",
@@ -149,17 +196,6 @@ https://maps.app.goo.gl/qZvYcnyRkjRb6Ekp7?g_st=awb
 
     def start_send(self):
         try:
-            import pywhatkit  # noqa: F401
-        except ImportError:
-            messagebox.showerror(
-                "Missing dependency",
-                "pywhatkit is not installed.\n\n"
-                "Run this in a terminal:\n  pip install pywhatkit\n\n"
-                "Then restart the app."
-            )
-            return
-
-        try:
             recipients = self.get_recipients()
         except ValueError as e:
             messagebox.showerror("Error", str(e))
@@ -177,24 +213,33 @@ https://maps.app.goo.gl/qZvYcnyRkjRb6Ekp7?g_st=awb
         body = self.msg_text.get("1.0", "end-1c").strip()
         total = len(recipients)
 
+        self.log("🚀 Opening Chrome...")
+        self.set_status("Opening Chrome...", "#1a73e8")
+
         try:
+            self.driver = create_driver()
+            self.log("Chrome opened successfully.")
+            self.log("⏳ If QR code appears, scan it with your phone (you only need to do this once).")
+
             for i, (phone, name) in enumerate(recipients, 1):
                 text = build_text(name, body)
                 self.set_status(f"📤 ({i}/{total}) Sending to {name}...", "#1a73e8")
                 self.log(f"[{i}/{total}] Sending to {phone} ({name})...")
-                auto_send(phone, text)
+                send_whatsapp(self.driver, phone, text, self.log)
                 self.log(f"✅ Sent to {phone} ({name})")
-                time.sleep(3)
+
+            self.set_status(f"✅ Done! {total} messages sent.", "green")
+            self.log(f"\n🎉 All {total} messages sent successfully!")
+            messagebox.showinfo("Complete", f"All {total} messages sent!")
+
         except Exception as e:
             self.log(f"❌ Error: {e}")
             self.set_status("❌ Failed — check log", "red")
+        finally:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
             self.send_btn.configure(state="normal", text="🚀 Send All")
-            return
-
-        self.set_status(f"✅ Done! {total} messages sent.", "green")
-        self.log(f"\n🎉 All {total} messages sent successfully!")
-        self.send_btn.configure(state="normal", text="🚀 Send All")
-        messagebox.showinfo("Complete", f"All {total} messages sent!")
 
 
 # ---------- entry ----------

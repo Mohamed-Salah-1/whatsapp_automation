@@ -2,7 +2,7 @@
 REM Build WhatsApp Sender GUI into a single .exe
 REM
 REM Prerequisites:
-REM   pip install pyinstaller pywhatkit
+REM   pip install pyinstaller selenium webdriver-manager
 REM
 REM Then run this batch file.
 

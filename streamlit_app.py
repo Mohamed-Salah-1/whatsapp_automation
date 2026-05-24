@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 import time
-import os
+
 import csv
 import io
 
@@ -78,6 +78,16 @@ st.sidebar.markdown(
     "- Phone numbers must be full international (e.g. `966537148588`)"
 )
 
+st.sidebar.markdown("### 🤖 Auto-send setup")
+st.sidebar.markdown(
+    "1. Install `pywhatkit` locally: `pip install pywhatkit`\n"
+    "2. Open WhatsApp Web in your **default** Chrome profile and scan the QR code\n"
+    "3. Keep WhatsApp Web logged in\n"
+    "4. Run the app **locally** via `streamlit run streamlit_app.py`\n"
+    "5. Select 'Auto-send' mode and click 'Send All Messages'\n\n"
+    "⚠️ Auto-send **will not work** on Streamlit Cloud — it needs a browser on your machine."
+)
+
 
 # ---------- main ----------
 st.title("💬 WhatsApp Bulk Sender")
@@ -126,12 +136,6 @@ https://maps.app.goo.gl/qZvYcnyRkjRb6Ekp7?g_st=awb
 الدور الثاني , مكتب رقم 216"""
 
 message_body = st.text_area("Message body", value=default_body, height=300, key="message_body")
-
-col_reset, _ = st.columns([1, 5])
-with col_reset:
-    if st.button("↺ Reset to default", type="tertiary"):
-        st.session_state.message_body = default_body
-        st.rerun()
 
 st.markdown("### Preview (first recipient)")
 if recipients and message_body:

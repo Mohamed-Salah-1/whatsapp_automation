@@ -88,10 +88,9 @@ class WhatsAppSenderApp:
         self.root = root
         self.driver = None
         root.title("WhatsApp Bulk Sender")
-        root.geometry("750+{}+{}".format(
-            (root.winfo_screenwidth() - 750) // 2,
-            (root.winfo_screenheight() - 750) // 2
-        ))
+        x = (root.winfo_screenwidth() - 750) // 2
+        y = (root.winfo_screenheight() - 750) // 2
+        root.geometry(f"750x750+{x}+{y}")
         root.minsize(600, 650)
 
         # ---- recipients ----

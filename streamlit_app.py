@@ -99,6 +99,17 @@ st.sidebar.markdown(
     "5. Make sure WhatsApp Web is logged in on Chrome"
 )
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🪟 Windows app (no Python needed)")
+st.sidebar.markdown(
+    "There's also a standalone `.exe` version in this repo:\n"
+    "**`whatsapp_sender_gui.py`** — a desktop app with a simple GUI.\n\n"
+    "To build it:\n"
+    "1. `pip install pyinstaller pywhatkit`\n"
+    "2. Run `build_exe.bat`\n"
+    "3. Share `dist/WhatsApp_Sender.exe` with your friend"
+)
+
 
 # ---------- main ----------
 st.title("💬 WhatsApp Bulk Sender")

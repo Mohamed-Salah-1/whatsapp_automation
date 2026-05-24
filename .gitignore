@@ -11,6 +11,12 @@ venv/
 # User Data (browser profiles)
 User_Data/
 
+# PyInstaller build artifacts
+dist/
+build/
+*.spec
+__pycache__/
+
 # OS
 .DS_Store
 Thumbs.db

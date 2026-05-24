@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
-import time
-
 import csv
 import io
+import textwrap
 
 st.set_page_config(page_title="WhatsApp Bulk Sender", page_icon="💬", layout="centered")
 
@@ -45,17 +44,31 @@ def build_text(name: str, body: str) -> str:
     return f"{greeting}\n{body}"
 
 
-def auto_send(phone: str, text: str):
+def generate_script(recipients: list[tuple[str, str]], body: str) -> str:
+    recipients_literal = repr(recipients)
+    body_literal = repr(body)
+    return textwrap.dedent(f'''\
     import pywhatkit
-    pywhatkit.sendwhatmsg_instantly(phone, text, tab_close=True, wait_time=10)
+    import time
 
+    recipients = {recipients_literal}
 
-@st.dialog("⚠️ pywhatkit not installed")
-def show_pywhatkit_dialog():
-    st.write("`pywhatkit` is required for auto-send mode. Install it with:")
-    st.code("pip install pywhatkit")
-    if st.button("OK"):
-        st.rerun()
+    message_body = {body_literal}
+
+    def build_text(name: str, body: str) -> str:
+        name = (name or "").strip()
+        greeting = f"السلام عليكم {{name}}" if name else "السلام عليكم"
+        return f"{{greeting}}\\n{{body}}"
+
+    for phone, name in recipients:
+        text = build_text(name, message_body)
+        print(f"Sending to {{phone}} ({{name}})...")
+        pywhatkit.sendwhatmsg_instantly(phone, text, tab_close=True, wait_time=15)
+        print(f"Sent to {{phone}} ({{name}})")
+        time.sleep(3)
+
+    print("Done! All messages sent.")
+    ''')
 
 
 # ---------- session state ----------
@@ -65,9 +78,8 @@ if "log" not in st.session_state:
 
 # ---------- sidebar ----------
 mode = st.sidebar.radio(
-    "Sending method",
-    ["🔗 Generate wa.me links", "🤖 Auto-send via browser"],
-    help="wa.me links work everywhere. Auto-send requires pywhatkit installed locally.",
+    "Mode",
+    ["🔗 Generate wa.me links", "📥 Download auto-send script"],
 )
 
 st.sidebar.markdown("---")
@@ -78,20 +90,19 @@ st.sidebar.markdown(
     "- Phone numbers must be full international (e.g. `966537148588`)"
 )
 
-st.sidebar.markdown("### 🤖 Auto-send setup")
+st.sidebar.markdown("### 📥 Script mode")
 st.sidebar.markdown(
-    "1. Install `pywhatkit` locally: `pip install pywhatkit`\n"
-    "2. Open WhatsApp Web in your **default** Chrome profile and scan the QR code\n"
-    "3. Keep WhatsApp Web logged in\n"
-    "4. Run the app **locally** via `streamlit run streamlit_app.py`\n"
-    "5. Select 'Auto-send' mode and click 'Send All Messages'\n\n"
-    "⚠️ Auto-send **will not work** on Streamlit Cloud — it needs a browser on your machine."
+    "1. Configure recipients + message below\n"
+    "2. Click **Download script**\n"
+    "3. Save the `.py` file on your computer\n"
+    "4. Run: `pip install pywhatkit && python send_whatsapp.py`\n"
+    "5. Make sure WhatsApp Web is logged in on Chrome"
 )
 
 
 # ---------- main ----------
 st.title("💬 WhatsApp Bulk Sender")
-st.markdown("Upload a CSV or paste recipients, write your message, and send.")
+st.markdown("Upload a CSV or paste recipients, write your message.")
 
 # --- Recipients input ---
 tab_csv, tab_paste = st.tabs(["📁 Upload CSV", "✏️ Paste manually"])
@@ -143,7 +154,7 @@ if recipients and message_body:
     preview_text = build_text(preview_name, message_body)
     st.code(preview_text, language="text", line_numbers=True)
 
-# --- Send / Generate ---
+# --- Action ---
 st.markdown("---")
 
 if not recipients or not message_body.strip():
@@ -153,54 +164,36 @@ if not recipients or not message_body.strip():
 if mode == "🔗 Generate wa.me links":
     if st.button("🔗 Generate WhatsApp Links", type="primary", use_container_width=True):
         st.session_state.log = []
-        links = []
+        links_text = ""
         for phone, name in recipients:
             text = build_text(name, message_body.strip())
             link = build_wa_link(phone, text)
-            links.append((phone, name, link))
             st.session_state.log.append(f"✅ {phone} ({name})")
+            links_text += f"{link}\n"
 
-        st.success(f"Generated {len(links)} links")
-        for phone, name, link in links:
+        st.success(f"Generated {len(recipients)} links")
+        for phone, name in recipients:
+            link = build_wa_link(phone, build_text(name, message_body.strip()))
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.markdown(f"**{name}** — {phone}")
             with col2:
-                st.markdown(f"[📱 Open WhatsApp]({link})", unsafe_allow_html=True)
+                st.markdown(f"[📱 Open]({link})", unsafe_allow_html=True)
 
-        st.info("Click each link to open WhatsApp with the message pre-filled.")
+        st.text_area("Copy all links (paste in browser tab to open multiple)", links_text, height=100)
+        st.info("Click each link or copy them all — WhatsApp Web opens with the message pre-filled. Just press Enter to send.")
 
-else:  # auto-send mode
-    try:
-        import pywhatkit  # noqa: F401
-        pywhatkit_available = True
-    except ImportError:
-        pywhatkit_available = False
+else:  # download script
+    script_content = generate_script(recipients, message_body.strip())
 
-    if not pywhatkit_available:
-        show_pywhatkit_dialog()
-        st.stop()
+    st.download_button(
+        label="📥 Download auto-send script",
+        data=script_content,
+        file_name="send_whatsapp.py",
+        mime="text/x-python",
+        type="primary",
+        use_container_width=True,
+    )
 
-    if st.button("🚀 Send All Messages", type="primary", use_container_width=True):
-        st.session_state.log = []
-        progress = st.progress(0, text="Starting...")
-        status = st.empty()
-
-        for i, (phone, name) in enumerate(recipients):
-            text = build_text(name, message_body.strip())
-            try:
-                status.info(f"📤 Sending to {name} ({phone})...")
-                auto_send(phone, text)
-                st.session_state.log.append(f"✅ {phone} ({name}) — sent")
-                time.sleep(3)
-            except Exception as e:
-                st.session_state.log.append(f"❌ {phone} ({name}) — {e}")
-            progress.progress((i + 1) / len(recipients), text=f"{i+1}/{len(recipients)}")
-
-        status.success("✅ Done!")
-        progress.empty()
-
-    if st.session_state.log:
-        st.markdown("### Log")
-        for entry in st.session_state.log:
-            st.text(entry)
+    with st.expander("📄 Preview the script"):
+        st.code(script_content, language="python")
